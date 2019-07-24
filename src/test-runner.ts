@@ -424,6 +424,11 @@ export class Tester {
 
     // tslint:disable-next-line:non-literal-fs-path
     const fileStream = fs.createReadStream(filePath)
+    
+    // We need to pause file stream, otherwise stream will be read
+    // before content is sent to a storage provider. 
+    fileStream.pause()
+    
     let chunksCount = 0;
     fileStream.on('data', (chunk) => {
       chunksCount++;
@@ -437,20 +442,18 @@ export class Tester {
     await this.createDataObject(newContentId, filePath)
     
     const config = {
+      maxContentLength: fileStats.size, // <-- this is required
       headers: {
         'Content-Length': fileStats.size,
         // TODO uncomment this once the issue fixed:
         // https://github.com/Joystream/storage-node-joystream/issues/16
         // 'Content-Type': file.type
         'Content-Type': '' // <-- this is a required hack
-      },
-      onUploadProgress: (progressEvent: any) => {
-        const percentCompleted = Math.round( (progressEvent.loaded * 100) / progressEvent.total );
-
-        // TODO update console progress
-
-        console.log(`Uploaded ${percentCompleted}% of a file`);
       }
+
+      // For some reson 'onUploadProgress' doesn't work when we send a file from Node.js.
+      // That's why we don't use it here, but we track upload progress via stream.on('data',)
+      // , onUploadProgress
     };
 
     var assetUrl = await this.resolveAssetEndpoint(storageProviderId, newContentId);
