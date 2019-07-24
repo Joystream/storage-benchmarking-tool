@@ -24,11 +24,23 @@ import { SubmittableExtrinsic } from '@polkadot/api/SubmittableExtrinsic';
 // tslint:disable-next-line:import-name
 import * as IpfsHash from 'ipfs-only-hash';
 
-// create new progress bar with custom token "speed"
-const consoleBar = new cliProgress.Bar({
-  format: `Progress ${chalk.green('[{bar}]')} {percentage}% | ETA: {eta}s | ${chalk.bold('{value}')}/{total} bytes | Speed: {speed} MB/sec`,
-  barCompleteChar: '◼'
-}, cliProgress.Presets.rect);
+/**
+ * Create a new progress bar with a custom token "speed".
+ */
+function newProgressBar (kind: 'download' | 'upload') {
+  const prefix = kind === 'download' ? `Downloading` : `Uploading`
+  const speed = kind === 'download' ? ` | Speed: {speed} MB/sec` : ``
+
+  return new cliProgress.Bar({
+    format: `${prefix} ${chalk.green('[{bar}]')} {percentage}% | ETA: {eta}s | ${chalk.bold('{value}')}/{total} bytes${speed}`,
+    barCompleteChar: '◼'
+  }, cliProgress.Presets.rect);
+}
+
+// Update a console progress bar every X MB (in bytes):
+const updateEvery_X_MB = 1;
+const one_MB_in_bytes = 1024 ** 2;
+const updateEveryXBytes = updateEvery_X_MB * one_MB_in_bytes;
 
 function formatNumber(n: number) {
   return numeral(n).format('0,0');
@@ -50,10 +62,6 @@ type ServiceInfoEntry = {
 type ServiceInfo = {
   asset: ServiceInfoEntry,
   discover: ServiceInfoEntry,
-}
-
-type TesterProps = {
-  // api: ApiPromise
 }
 
 export class Tester {
@@ -213,6 +221,7 @@ export class Tester {
     console.log(`Downloading ${contentFromUrlStr}`);
 
     const expectedSize = dataObject.size_in_bytes.toNumber();
+    const consoleBar = newProgressBar('download')
     consoleBar.start(expectedSize, 0, { speed: "N/A" });
 
     const startTime = Date.now();
@@ -253,11 +262,6 @@ export class Tester {
       console.log(`❌ ${error}`);
       return;
     }
-
-    // Update a console progress bar every X MB (in bytes):
-    const updateEvery_X_MB = 1;
-    const one_MB_in_bytes = 1024 ** 2;
-    const updateEveryXBytes = updateEvery_X_MB * one_MB_in_bytes;
 
     let consumedSinceLastUpdate = 0;
     let consumedBytes = 0;
@@ -428,23 +432,35 @@ export class Tester {
     // We need to pause file stream, otherwise stream will be read
     // before content is sent to a storage provider. 
     fileStream.pause()
+
+    const consoleBar = newProgressBar('upload')
+    let consumedSinceLastUpdate = 0;
+    let consumedBytes = 0;
     
-    let chunksCount = 0;
     fileStream.on('data', (chunk) => {
-      chunksCount++;
-      console.log(`Uploader read a chunk #${chunksCount} = ${chunk.length} bytes`);
+      const chunkSize = chunk.length
+      consumedBytes += chunkSize;
+      consumedSinceLastUpdate += chunkSize;
+      if (consumedSinceLastUpdate >= updateEveryXBytes) {
+        consoleBar.update(consumedBytes)
+        if (consumedBytes >= fileSize) {
+          consoleBar.stop()
+          console.log(`Wait until content is marked as ready by the storage provider...`)
+        }
+      }
     });
 
     // tslint:disable-next-line:non-literal-fs-path
     const fileStats = fs.statSync(filePath)
+    const fileSize = fileStats.size
 
     const newContentId = ContentId.generate();
     await this.createDataObject(newContentId, filePath)
     
     const config = {
-      maxContentLength: fileStats.size, // <-- this is required
+      maxContentLength: fileSize, // <-- this is required
       headers: {
-        'Content-Length': fileStats.size,
+        'Content-Length': fileSize,
         // TODO uncomment this once the issue fixed:
         // https://github.com/Joystream/storage-node-joystream/issues/16
         // 'Content-Type': file.type
@@ -457,8 +473,8 @@ export class Tester {
     };
 
     var assetUrl = await this.resolveAssetEndpoint(storageProviderId, newContentId);
-
     console.log(`Starting to upload a file at URL: ${assetUrl}`);
+    consoleBar.start(fileSize, 0, { speed: "N/A" });
 
     try {
       await axios.put<{ message: string }>(assetUrl, fileStream, config).catch(err => {
@@ -467,8 +483,10 @@ export class Tester {
 
       // TODO create content metadata with title and cover?
 
+      consoleBar.stop();
       console.log(`✅ File uploaded at URL: ${assetUrl}`);
     } catch (err) {
+      consoleBar.stop();
       console.log(`❌ Failed to upload a file at URL: ${assetUrl}`, err);
       const isUploadFailed = !err.response || (err.response.status >= 500 && err.response.status <= 504);
       if (isUploadFailed) {
