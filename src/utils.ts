@@ -19,11 +19,11 @@ export const RpcEndpoints = {
  * @param maxResolutionTime The maximum number of seconds it can take to resolve a host from a key before it is considered down.
  * @param pauseTime Minimum pause time (in seconds) between download requests, both failure and success.
  */
-export type TestScenarioType = {
+export type TestScenarioProps = {
   chainRpc: RpcEndpoint,
   name: string,
   description?: string,
-  dependencies?: TestScenarioType[]
+  dependencies?: TestScenarioProps[]
   // sentryNodes: ...,
   requestPipelineWidth?: number,
   maxResolutionTime?: number,
@@ -51,14 +51,15 @@ type FilterContentIdsFn = () => ContentId[]
  *   is the maximum number of seconds a download can remain in progress 
  *   before it is deemed a failure.
  */
-export type DownloadTestScenarioType = TestScenarioType & {
+export type DownloadTestScenarioProps = TestScenarioProps & {
   filter?: ContentId[] | FilterContentIdsFn,
   // target: ...
   // personae: ...
   maxDownloadTimePerByte?: number
 }
 
-export type UploadTestScenarioType = TestScenarioType & {
+export type UploadTestScenarioProps = TestScenarioProps & {
+  contentFileName: string
   // TODO finish...
 }
 
@@ -79,21 +80,21 @@ export type UploadResultType = {
   // TODO finish...
 }
 
-abstract class TestScenario {
-  props: TestScenarioType;
-  constructor (props: TestScenarioType) {
+abstract class TestScenario<TestProps extends TestScenarioProps> {
+  props: TestProps;
+  constructor (props: TestProps) {
     this.props = props;
   }
 }
 
-export class DownloadTestScenario extends TestScenario {
-  constructor (props: DownloadTestScenarioType) {
+export class DownloadTestScenario extends TestScenario<DownloadTestScenarioProps> {
+  constructor (props: DownloadTestScenarioProps) {
     super(props);
   }
 }
 
-export class UploadTestScenario extends TestScenario {
-  constructor (props: UploadTestScenarioType) {
+export class UploadTestScenario extends TestScenario<UploadTestScenarioProps> {
+  constructor (props: UploadTestScenarioProps) {
     super(props);
   }
 }
@@ -147,3 +148,10 @@ export const ACCOUNTS_FOLDER = pathFromRoot(`benchmark/accounts`);
 export const RESULTS_FOLDER = pathFromRoot(`benchmark/results`);
 export const SAMPLE_FILES_FOLDER = pathFromRoot(`benchmark/sample-files`);
 export const TEST_SCENARIOS_FOLDER = pathFromRoot(`build/src/storage-tests`);
+
+// ---------------------------------------------------------
+
+export function arrayToConsoleString(array: any[]) {
+  return array.map((item, i) => 
+  `  ${i+1}) ${item ? item.toString() : 'undefined'}`).join('\n')
+}

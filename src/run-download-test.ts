@@ -1,5 +1,5 @@
 import { ContentId } from "@joystream/types/lib/media";
-import { RESULTS_FOLDER } from "./utils";
+import { RESULTS_FOLDER, DownloadTestScenario } from "./utils";
 import { Tester } from './test-runner';
 
 const contentId_90mb = ContentId.decode('5DNMsxhtiBSFmi1egRLuKkRYGFf6CVTFjvqHKhZkqEr7sk8a');
@@ -8,7 +8,7 @@ const contentId_4mb = ContentId.decode('5EPeofnvh2rqswd8E8mqWaYGPvaHC13HdMZwhZex
 
 const testContentId = contentId_90mb;
 
-async function runDownloadTestScenario () {
+export async function runDownloadTest (test: DownloadTestScenario) {
   const tester = new Tester({});
   try {
     await tester.setup();
@@ -42,5 +42,3 @@ async function runDownloadTestScenario () {
   }
   tester.destroy();
 }
-
-runDownloadTestScenario();

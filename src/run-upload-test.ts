@@ -1,13 +1,8 @@
 import { Tester } from "./test-runner";
-import { SAMPLE_FILES_FOLDER } from './utils';
+import { SAMPLE_FILES_FOLDER, UploadTestScenario } from './utils';
 import * as path from 'path';
 
-const SMALL_FILE_NAME = 'audio.mp3'
-const BIG_FILE_NAME = 'staked.mp3'
-
-const UPLOAD_FILE_NAME = SMALL_FILE_NAME
-
-async function runUploadTestScenario () {
+export async function runUploadTest (test: UploadTestScenario) {
   const tester = new Tester({});
   try {
     await tester.setup();
@@ -15,12 +10,18 @@ async function runUploadTestScenario () {
     const contentProviders = await tester.getStakedProviders();
 
     // This file is taken from: https://testnet.joystream.org/acropolis/pioneer/#/media/play/5FRqaXTmXJsZRKxmvcRSrCGvYgua5rtirc9dybWC6ijxieF9
-    const testFilePath = path.join(SAMPLE_FILES_FOLDER, UPLOAD_FILE_NAME);
+    const testFilePath = path.join(SAMPLE_FILES_FOLDER, test.props.contentFileName);
 
     // TODO pick up provider dynamically or via filterProviders or try all providers:
     for (let j = 0; j < contentProviders.length; j++) {
       const provider = contentProviders[j];
+      const isPrimaryLiaison = await tester.isPrimaryLiaison(provider)
       
+      if (!isPrimaryLiaison) {
+        console.log(`Skip uploading to this storage provider because it's not the primary liaison: ${provider.toString()}`)
+        continue
+      }
+
       console.log(`\nUploading a file to provider #${j+1}/${contentProviders.length}`)
       
       console.log({ testFilePath })
@@ -35,5 +36,3 @@ async function runUploadTestScenario () {
   }
   tester.destroy();
 }
-
-runUploadTestScenario();

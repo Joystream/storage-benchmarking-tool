@@ -12,14 +12,13 @@ import * as moment from 'moment';
 import { Keyring } from '@polkadot/keyring';
 import { KeyringPair$Json } from '@polkadot/keyring/types';
 
-import { RpcEndpoints, SAMPLE_FILES_FOLDER, RESULTS_FOLDER, TEST_SCENARIOS_FOLDER, DownloadTestScenario, UploadTestScenario, canUploadFile, DownloadResultType, HARDCODED_DO_TYPE, ACCOUNTS_FOLDER } from './utils';
+import { RpcEndpoints, canUploadFile, DownloadResultType, HARDCODED_DO_TYPE, ACCOUNTS_FOLDER, arrayToConsoleString } from './utils';
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { Option, Vector } from '@polkadot/types/codec';
 import { registerJoystreamTypes } from '@joystream/types';
 import { Url } from '@joystream/types/lib/discovery';
 import { DataObjectStorageRelationshipId, DataObjectStorageRelationship, ContentId, DataObject, ContentMetadata } from '@joystream/types/lib/media';
 import { AccountId } from '@polkadot/types';
-import { Codec } from '@polkadot/types/types';
 import { CodecResult, SubscriptionResult } from '@polkadot/api/promise/types';
 import { SubmittableExtrinsic } from '@polkadot/api/SubmittableExtrinsic';
 // tslint:disable-next-line:import-name
@@ -43,11 +42,6 @@ function normalizeUrl(url: string | Url) : string {
   return st.toString()
 }
 
-function arrayToConsoleString(array: Codec[]) {
-  return array.map((item, i) => 
-  `  ${i+1}) ${item ? item.toString() : 'undefined'}`).join('\n')
-}
-
 type ServiceInfoEntry = {
   version: number,
   endpoint: string
@@ -68,7 +62,7 @@ export class Tester {
   private bootstrapNodes: Url[];
   private downloadResults: DownloadResultType[] = [];
 
-  constructor (props: TesterProps) {
+  constructor () {
     // stub
   }
 
@@ -105,7 +99,15 @@ export class Tester {
     this.bootstrapNodes = await this.api.query.discovery.bootstrapEndpoints() as unknown as Url[];
 
     const bootstrapNodesAsString = arrayToConsoleString(this.bootstrapNodes)
-    console.log(`Storage bootstrap nodes:\n${bootstrapNodesAsString}`);
+    console.log(`Storage bootstrap nodes:\n${bootstrapNodesAsString}\n`);
+  }
+
+  getPrimaryLiaison = async (): Promise<AccountId | undefined> => {
+    const primaryLiaison = await this.api.query.dataDirectory.primaryLiaisonAccountId() as unknown as Option<AccountId>;
+
+    return primaryLiaison && primaryLiaison.isSome
+      ? primaryLiaison.unwrap()
+      : undefined
   }
 
   getStakedProviders = async (): Promise<AccountId[]> => {
@@ -400,7 +402,19 @@ export class Tester {
       })
   }
 
+  isPrimaryLiaison = async (storageProviderId: AccountId) => {
+    const primaryLiaison = await this.getPrimaryLiaison()
+    return storageProviderId.eq(primaryLiaison)
+  }
+
   uploadContent = async (storageProviderId: AccountId, filePath: fs.PathLike) => {
+
+    // Check that storage provider is a primary liaison
+    const primaryLiaison = await this.getPrimaryLiaison()
+    if (!storageProviderId.eq(primaryLiaison)) {
+      console.log(`❌ Can upload only to the primary liaison: ${primaryLiaison.toString()}. You specified a storage provider: ${storageProviderId.toString()}`)
+      return
+    }
 
     const fileError = canUploadFile(filePath)
     if (fileError) {
@@ -410,6 +424,11 @@ export class Tester {
 
     // tslint:disable-next-line:non-literal-fs-path
     const fileStream = fs.createReadStream(filePath)
+    let chunksCount = 0;
+    fileStream.on('data', (chunk) => {
+      chunksCount++;
+      console.log(`Uploader read a chunk #${chunksCount} = ${chunk.length} bytes`);
+    });
 
     // tslint:disable-next-line:non-literal-fs-path
     const fileStats = fs.statSync(filePath)
@@ -439,7 +458,9 @@ export class Tester {
     console.log(`Starting to upload a file at URL: ${assetUrl}`);
 
     try {
-      await axios.put<{ message: string }>(assetUrl, fileStream, config);
+      await axios.put<{ message: string }>(assetUrl, fileStream, config).catch(err => {
+        console.log(`Error from axios.put:`, err)
+      });
 
       // TODO create content metadata with title and cover?
 
