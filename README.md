@@ -1,5 +1,35 @@
 # Storage Benchmarking Tool for Joystream Network
 
+## Setup
+
+```sh
+# Install Node.js dependencies:
+yarn
+
+# Run TypeScript compilation:
+yarn build
+
+# Alternatively you can run TypeScript compilation in watch mode.
+# This will recompile any *.ts files that have been changed.
+yarn build:watch
+```
+
+## Usage
+
+```sh
+# See help on how to use this tool:
+./bench -h
+```
+
+## Available scripts
+
++ `clean` - remove coverage data, Jest cache and transpiled files,
++ `build` - transpile TypeScript to ES6,
++ `build:watch` - interactive watch mode to automatically transpile source files,
++ `lint` - lint source files and tests,
++ `test` - run tests,
++ `test:watch` - interactive watch mode to automatically re-run tests
+
 ## What's included:
 
 + [TypeScript][typescript] [3.5][typescript-35],
@@ -12,20 +42,11 @@
 
 The main code is located in the `src` and unit tests in the `__tests__` directories.
 
-### Unit tests in JavaScript
+## Unit tests in JavaScript
 
 Writing unit tests in TypeScript can sometimes be troublesome and confusing. Especially when mocking dependencies and using spies.
 
 This is **optional**, but if you want to learn how to write JavaScript tests for TypeScript modules, read the [corresponding wiki page][wiki-js-tests].
-
-## Available scripts
-
-+ `clean` - remove coverage data, Jest cache and transpiled files,
-+ `build` - transpile TypeScript to ES6,
-+ `build:watch` - interactive watch mode to automatically transpile source files,
-+ `lint` - lint source files and tests,
-+ `test` - run tests,
-+ `test:watch` - interactive watch mode to automatically re-run tests
 
 ## License
 Licensed under the GNU GPL v3.
