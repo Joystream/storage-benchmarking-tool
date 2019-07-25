@@ -1,5 +1,4 @@
 import * as path from 'path';
-import { ContentId } from '@joystream/types/lib/media';
 import * as fs from 'fs';
 
 export type RpcEndpoint = string;
@@ -30,8 +29,6 @@ export type TestScenarioProps = {
   pauseTime?: number
 }
 
-type FilterContentIdsFn = () => ContentId[]
-
 /**
  * filter: A regular expression which will be used to filter the set of objects, 
  *   by data object ID, to download.
@@ -52,7 +49,7 @@ type FilterContentIdsFn = () => ContentId[]
  *   before it is deemed a failure.
  */
 export type DownloadTestScenarioProps = TestScenarioProps & {
-  filter?: ContentId[] | FilterContentIdsFn,
+  contentIds?: string[],
   // target: ...
   // personae: ...
   maxDownloadTimePerByte?: number

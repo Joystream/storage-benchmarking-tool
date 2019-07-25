@@ -1,19 +1,23 @@
 import { ContentId } from "@joystream/types/lib/media";
-import { RESULTS_FOLDER, DownloadTestScenario } from "./utils";
+import { RESULTS_FOLDER, DownloadTestScenario, arrayToConsoleString } from "./utils";
 import { Tester } from './test-runner';
-
-const contentId_90mb = ContentId.decode('5DNMsxhtiBSFmi1egRLuKkRYGFf6CVTFjvqHKhZkqEr7sk8a');
-
-const contentId_4mb = ContentId.decode('5EPeofnvh2rqswd8E8mqWaYGPvaHC13HdMZwhZexjXz5EZbb');
-
-const testContentId = contentId_90mb;
 
 export async function runDownloadTest (test: DownloadTestScenario) {
   const tester = new Tester({});
   try {
     await tester.setup();
 
-    const contentIds = await tester.getKnownContentIds();
+    let contentIds: ContentId[]
+    const contentIdStrs = test.props.contentIds
+
+    if (contentIdStrs && contentIdStrs.length) {
+      contentIds = contentIdStrs.map(ContentId.decode)
+      console.log(`Going to download ${contentIds.length} file(s)`)
+    } else {
+      console.log(`No content ids provided in a test scenario. Downloading all known files`)
+      contentIds = await tester.getKnownContentIds()
+    }
+
     for (let i = 0; i < contentIds.length; i++) {
       const cid = contentIds[i];
       const contentProviders = await tester.findReadyContentProviders(cid);
