@@ -68,13 +68,21 @@ export type DownloadResultType = {
   startTime: number,
   endTime: number,
   // avgSpeed: number, can be calculated
-  contentSize: number,
+  fileSize: number,
   downloadedSize: number,
   error?: string
 }
 
 export type UploadResultType = {
-  // TODO finish...
+  filePath: string,
+  contentId: string,
+  storageProviderId: string,
+  assetUrl: string,
+  startTime: number,
+  endTime: number,
+  fileSize: number,
+  uploadedSize: number,
+  error?: string
 }
 
 abstract class TestScenario<TestProps extends TestScenarioProps> {

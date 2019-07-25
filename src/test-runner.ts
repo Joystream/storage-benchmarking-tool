@@ -12,7 +12,7 @@ import * as moment from 'moment';
 import { Keyring } from '@polkadot/keyring';
 import { KeyringPair$Json } from '@polkadot/keyring/types';
 
-import { RpcEndpoints, canUploadFile, DownloadResultType, HARDCODED_DO_TYPE, ACCOUNTS_FOLDER, arrayToConsoleString } from './utils';
+import { RpcEndpoints, canUploadFile, DownloadResultType, HARDCODED_DO_TYPE, ACCOUNTS_FOLDER, arrayToConsoleString, UploadResultType } from './utils';
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { Option, Vector } from '@polkadot/types/codec';
 import { registerJoystreamTypes } from '@joystream/types';
@@ -69,6 +69,7 @@ export class Tester {
   private api: ApiPromise;
   private bootstrapNodes: Url[];
   private downloadResults: DownloadResultType[] = [];
+  private uploadResults: UploadResultType[] = [];
 
   constructor () {
     // stub
@@ -233,7 +234,7 @@ export class Tester {
       assetUrl,
       startTime,
       endTime: startTime, // this is a temporary until the test is finished or interrapted
-      contentSize: expectedSize,
+      fileSize: expectedSize,
       downloadedSize: 0,
       error: undefined
     };
@@ -300,7 +301,7 @@ export class Tester {
         const passed = passedMillis().asString;
         result.endTime = Date.now();
         result.downloadedSize = consumedBytes;
-        result.error = `Failed to consume a full content due to an error: ${err}`;
+        result.error = `Failed to download a full content due to an error: ${err}`;
         
         consoleBar.stop();
         console.log(`❌ Failed to consume a full content. Consumed ${formatNumber(consumedBytes)} bytes. Passed ${passed} millis.`, err);
@@ -318,19 +319,30 @@ export class Tester {
     console.log(`✅ Content downloaded! Consumed ${formatNumber(consumedBytes)} bytes in ${passed} millis`);
   }
 
-  saveDownloadResultsToFile = async (folderPath: string, testName: string) => {
+  resolveResultsFilePath = async (folderPath: string, testName: string) => {
     // tslint:disable-next-line:non-literal-fs-path
     const exists = fs.existsSync(folderPath);
     if (!exists) {
       await promisify(fs.mkdir)(folderPath, { recursive: true });
     }
     const currDateTime = moment().format(`YYYY-MM-DD_HH:mm`);
-    const fullPath = path.join(folderPath, `${testName}_${currDateTime}.js`);
-    const { downloadResults } = this;
-    const resultsJson = JSON.stringify(downloadResults, null, 2);
+    return path.join(folderPath, `${testName}_${currDateTime}.js`);
+  }
+
+  saveDownloadResultsToFile = async (folderPath: string, testName: string) => {
+    const fullPath = await this.resolveResultsFilePath(folderPath, testName)
+    const resultsJson = JSON.stringify(this.downloadResults, null, 2);
     const fileContent = `window.JOY_BENCHMARK_DOWNLOAD_RESULTS = ${resultsJson};`
     await promisify(fs.writeFile)(fullPath, fileContent);
     console.log(`Saved download results to file: ${fullPath}`);
+  }
+
+  saveUploadResultsToFile = async (folderPath: string, testName: string) => {
+    const fullPath = await this.resolveResultsFilePath(folderPath, testName)
+    const resultsJson = JSON.stringify(this.uploadResults, null, 2);
+    const fileContent = `window.JOY_BENCHMARK_UPLOAD_RESULTS = ${resultsJson};`
+    await promisify(fs.writeFile)(fullPath, fileContent);
+    console.log(`Saved upload results to file: ${fullPath}`);
   }
 
   createDataObject = async (contentId: ContentId, filePath: fs.PathLike) => {
@@ -411,6 +423,7 @@ export class Tester {
     return storageProviderId.eq(primaryLiaison)
   }
 
+  // tslint:disable-next-line:max-func-body-length
   uploadContent = async (storageProviderId: AccountId, filePath: fs.PathLike) => {
 
     // Check that storage provider is a primary liaison
@@ -476,6 +489,27 @@ export class Tester {
     console.log(`Starting to upload a file at URL: ${assetUrl}`);
     consoleBar.start(fileSize, 0, { speed: "N/A" });
 
+    const startTime = Date.now();
+
+    const result: UploadResultType = {
+      filePath: filePath.toString(),
+      contentId: newContentId.encode(),
+      storageProviderId: storageProviderId.toString(),
+      assetUrl,
+      startTime,
+      endTime: startTime, // this is a temporary until the test is finished or interrapted
+      fileSize,
+      uploadedSize: 0,
+      error: undefined
+    };
+    this.uploadResults.push(result);
+
+    function onUploadFinished () {
+      result.endTime = Date.now()
+      result.uploadedSize = consumedBytes
+      consoleBar.stop()
+    }
+
     try {
       await axios.put<{ message: string }>(assetUrl, fileStream, config).catch(err => {
         console.log(`Error from axios.put:`, err)
@@ -483,15 +517,17 @@ export class Tester {
 
       // TODO create content metadata with title and cover?
 
-      consoleBar.stop();
+      onUploadFinished()
       console.log(`✅ File uploaded at URL: ${assetUrl}`);
     } catch (err) {
-      consoleBar.stop();
+      result.error = `Failed to upload a ful file due to an error: ${err}`
+      onUploadFinished()
       console.log(`❌ Failed to upload a file at URL: ${assetUrl}`, err);
+      
       const isUploadFailed = !err.response || (err.response.status >= 500 && err.response.status <= 504);
       if (isUploadFailed) {
         // network connection error
-        console.log(`Unreachable storage provider: ${storageProviderId}`)
+        console.log(`Unreachable a storage provider: ${storageProviderId}`)
       }
     }
   }
