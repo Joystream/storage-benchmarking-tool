@@ -34,13 +34,6 @@ export async function runDownloadTest (test: DownloadTestScenario) {
 
     await tester.saveDownloadResultsToFile(RESULTS_FOLDER, `download`);
 
-    // const providers = await tester.findReadyContentProviders(testContentId);
-
-    // const provider = providers[0];
-    // const assetUrl = await tester.resolveAssetEndpoint(provider, testContentId);
-
-    // await tester.downloadContent(provider, testContentId);
-
   } catch (err) {
     console.log(`❌ Unexpected error while running a tester:`, err);
   }
