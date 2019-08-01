@@ -1,5 +1,12 @@
 # Storage Benchmarking Tool for Joystream Network
 
+Benchmarking tool now can do this:
+
+- Upload a file to the primary liaison.
+- Download a full file from any storage provider.
+- Generate random ranges (offsets and base64 hash) based on a full download of a file.
+- Download content in random ranges and compare their hashes to previously generated ones.
+
 ## Setup
 
 ```sh
