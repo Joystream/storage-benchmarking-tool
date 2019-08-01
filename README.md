@@ -18,7 +18,7 @@ yarn build:watch
 
 ```sh
 # See help on how to use this tool:
-./bench -h
+./bench.sh -h
 ```
 
 ## Available scripts
