@@ -1,9 +1,9 @@
 import { ContentId } from "@joystream/types/lib/media";
-import { RESULTS_FOLDER, DownloadTestScenario, arrayToConsoleString } from "./utils";
-import { Tester } from './test-runner';
+import { DownloadTestScenario, getRandomRangesFromCsvFile } from "./utils";
+import { DownloadTester } from './test-runner-download';
 
 export async function runDownloadTest (test: DownloadTestScenario) {
-  const tester = new Tester({});
+  const tester = new DownloadTester(test);
   try {
     await tester.setup();
 
@@ -22,17 +22,23 @@ export async function runDownloadTest (test: DownloadTestScenario) {
       const cid = contentIds[i];
       const contentProviders = await tester.findReadyContentProviders(cid);
       
+      // TODO Generate random ranges only on single provider that has requested content.
+
       // TODO pick up provider dynamically or via filterProviders or try all providers:
       for (let j = 0; j < contentProviders.length; j++) {
         const provider = contentProviders[j];
         
         console.log(`\nDownloading content #${i+1}/${contentIds.length} from provider #${j+1}/${contentProviders.length}`)
         
-        await tester.downloadContent(provider, cid);
+        // TODO use random ranges only if it was requested by a test runner:
+        // const randomRanges = await getRandomRangesFromCsvFile(cid, 5)
+        const randomRanges = []
+
+        await tester.downloadContent(provider, cid, randomRanges);
       }
     }
 
-    await tester.saveDownloadResultsToFile(RESULTS_FOLDER, `download`);
+    await tester.saveDownloadResultsToFile();
 
   } catch (err) {
     console.log(`❌ Unexpected error while running a tester:`, err);

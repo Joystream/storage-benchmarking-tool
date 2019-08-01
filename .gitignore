@@ -1,6 +1,5 @@
-benchmark/results
-benchmark/samples
-benchmark/sample-files
+data/test-results
+data/random-ranges
 
 # Logs
 logs

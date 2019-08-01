@@ -1,5 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as numeral from 'numeral';
+import { ContentId } from '@joystream/types/lib/media';
 
 export type RpcEndpoint = string;
 
@@ -50,42 +52,39 @@ export type TestScenarioProps = {
  */
 export type DownloadTestScenarioProps = TestScenarioProps & {
   contentIds?: string[],
+  generateRandomRanges?: boolean,
   // target: ...
   // personae: ...
   maxDownloadTimePerByte?: number
 }
 
 export type UploadTestScenarioProps = TestScenarioProps & {
-  contentFileName: string
+  contentFileName: string,
+  uploaderAccountId: string
   // TODO finish...
 }
 
-export type DownloadResultType = {
+export type TestResultType = {
+  storageProviderId: string,
   contentId: string,
+  assetUrl: string,
+  startTime: number,
+  endTime: number,
+  fileSize: number,
+  error?: string
+}
+
+export type DownloadResultType = TestResultType & {
   contentName: string,
-  storageProviderId: string,
-  assetUrl: string,
-  startTime: number,
-  endTime: number,
-  // avgSpeed: number, can be calculated
-  fileSize: number,
   downloadedSize: number,
-  error?: string
 }
 
-export type UploadResultType = {
+export type UploadResultType = TestResultType & {
   filePath: string,
-  contentId: string,
-  storageProviderId: string,
-  assetUrl: string,
-  startTime: number,
-  endTime: number,
-  fileSize: number,
   uploadedSize: number,
-  error?: string
 }
 
-abstract class TestScenario<TestProps extends TestScenarioProps> {
+export abstract class TestScenario<TestProps extends TestScenarioProps> {
   props: TestProps;
   constructor (props: TestProps) {
     this.props = props;
@@ -104,8 +103,11 @@ export class UploadTestScenario extends TestScenario<UploadTestScenarioProps> {
   }
 }
 
-// Extract to other file:
-// ---------------------------------------------------------
+// ---------------------------------------------------
+// File System Utils
+
+import * as moment from 'moment'
+import { Url } from '@joystream/types/lib/discovery'
 
 /**
  * Currently there is only one data object type that we use in Joystream network.
@@ -141,22 +143,117 @@ export function canUploadFile (filePath: fs.PathLike): string | void {
   }
 }
 
-// ---------------------------------------------------------
-
 const rootDir = process.cwd();
 
-export const pathFromRoot = (subPath: string): string => {
+const pathFromRoot = (subPath: string): string => {
   return path.join(rootDir, subPath);
 }
 
-export const ACCOUNTS_FOLDER = pathFromRoot(`benchmark/accounts`);
-export const RESULTS_FOLDER = pathFromRoot(`benchmark/results`);
-export const SAMPLE_FILES_FOLDER = pathFromRoot(`benchmark/sample-files`);
-export const TEST_SCENARIOS_FOLDER = pathFromRoot(`build/src/storage-tests`);
+const pathFromDataDir = (...subPaths: string[]): string => {
+  return path.join(pathFromRoot(`data`), ...subPaths);
+}
 
-// ---------------------------------------------------------
+export const TEST_SCENARIOS_FOLDER = pathFromRoot(`build/src/storage-tests`);
+export const ACCOUNTS_FOLDER = pathFromDataDir(`accounts`);
+export const RANDOM_RANGES_FOLDER = pathFromDataDir(`random-ranges`);
+export const TEST_RESULTS_FOLDER = pathFromDataDir(`test-results`);
+export const SAMPLE_FILES_FOLDER = pathFromDataDir(`sample-files`);
+
+/**
+ * This function creates all non existent directories on file system recursively.
+ */
+export async function resolveFilePath(folderPath: string, fileName: string): Promise<string> {
+  // tslint:disable-next-line:non-literal-fs-path
+  const exists = fs.existsSync(folderPath);
+  if (!exists) {
+    await promisify(fs.mkdir)(folderPath, { recursive: true });
+  }
+  return path.join(folderPath, fileName);
+}
+
+export async function resolveTestResultsFilePath(testName: string): Promise<string> {
+  const currDateTime = moment().format(`YYYY-MM-DD_HH:mm`)
+  const fileName = `${testName}_${currDateTime}.js`
+  return await resolveFilePath(TEST_RESULTS_FOLDER, fileName)
+}
+
+export async function resolveRandomRangesFilePath(contentId: ContentId): Promise<string> {
+  const assetName = contentId.encode()
+  const fileName = `${assetName}.csv`
+  return await resolveFilePath(RANDOM_RANGES_FOLDER, fileName)
+}
+
+// ---------------------------------------------------
+// Uncategorized utils
 
 export function arrayToConsoleString(array: any[]) {
   return array.map((item, i) => 
   `  ${i+1}) ${item ? item.toString() : 'undefined'}`).join('\n')
+}
+
+export function formatNumber(n: number) {
+  return numeral(n).format('0,0');
+}
+
+/**
+ * Returns a string Url with last `/` removed.
+ */
+export function normalizeUrl(url: string | Url) : string {
+  let st = new String(url)
+  if (st.endsWith('/')) {
+    return st.substring(0, st.length - 1);
+  }
+  return st.toString()
+}
+
+// ---------------------------------------------------
+// Random ranges
+
+const crypto = require('crypto')
+import { promisify } from 'util';
+
+export function base64Hash (data: any): string {
+  return crypto.createHash('md5').update(data).digest('base64')
+}
+
+export type RandomRange = {
+  startIdx: number
+  endIdx: number
+  base64Hash: string
+}
+
+const parseRangeString = (str: string): RandomRange => {
+  const [ startStr, endStr, base64Hash] = str.split(';')
+  return {
+    startIdx: parseInt(startStr),
+    endIdx: parseInt(endStr),
+    base64Hash
+  }
+}
+
+export async function getRandomRangesFromCsvFile (contentId: ContentId | string, maxRangesCount: number): Promise<RandomRange[]> {
+
+  const assetName = typeof contentId === 'string' ? contentId : contentId.encode()
+
+  const rangesFilePath = path.join(RANDOM_RANGES_FOLDER, assetName + '.csv')
+  const rangesStrs = (await promisify(fs.readFile)(rangesFilePath, 'utf8')).split('\n')
+
+  if (maxRangesCount >= rangesStrs.length) {
+    return rangesStrs.map(parseRangeString)
+  }
+
+  const randomRanges: RandomRange[] = []
+  const uniqRandomIdxs = new Set<number>()
+
+  while (uniqRandomIdxs.size < maxRangesCount) {
+    // tslint:disable-next-line:insecure-random
+    const randomIdx = Math.floor(Math.random() * rangesStrs.length)
+    if (!uniqRandomIdxs.has(randomIdx)) {
+      uniqRandomIdxs.add(randomIdx)
+      const randomRangeStr = rangesStrs[randomIdx]
+      randomRanges.push(parseRangeString(randomRangeStr))
+    }
+  }
+
+  return randomRanges
 }

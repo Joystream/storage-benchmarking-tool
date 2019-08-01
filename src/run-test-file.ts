@@ -13,11 +13,17 @@ function resolveFullPathOfTestFile(filePath: string): string {
   return filePath;
 }
 
-export async function runTestFile(testFilePath: string, scenarioNames?: string[]) {
+export type RuntTestFileOpts = {
+  scenarioNames?: string[]
+  generateRandomRanges?: boolean
+}
+
+export async function runTestFile(testFilePath: string, opts: RuntTestFileOpts = {}) {
   testFilePath = resolveFullPathOfTestFile(testFilePath)
   try {
     // tslint:disable-next-line:non-literal-require
     const testScenarios = require(testFilePath);
+    let { scenarioNames } = opts
 
     if (!scenarioNames || scenarioNames.length === 0) {
       // Get all test scenarios in a test file:
@@ -36,6 +42,7 @@ export async function runTestFile(testFilePath: string, scenarioNames?: string[]
       }
       
       if (scenario instanceof DownloadTestScenario) {
+        scenario.props.generateRandomRanges = opts.generateRandomRanges
         console.log(`\nCalling a download test scenario:`, scenario.props);
         await runDownloadTest(scenario)
       }

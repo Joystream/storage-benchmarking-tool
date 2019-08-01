@@ -1,9 +1,9 @@
-import { Tester } from "./test-runner";
-import { SAMPLE_FILES_FOLDER, UploadTestScenario, RESULTS_FOLDER } from './utils';
+import { SAMPLE_FILES_FOLDER, UploadTestScenario } from './utils';
 import * as path from 'path';
+import { UploadTester } from './test-runner-upload';
 
 export async function runUploadTest (test: UploadTestScenario) {
-  const tester = new Tester({});
+  const tester = new UploadTester(test);
   try {
     await tester.setup();
 
@@ -28,7 +28,7 @@ export async function runUploadTest (test: UploadTestScenario) {
       await tester.uploadContent(provider, testFilePath);
     }
 
-    await tester.saveUploadResultsToFile(RESULTS_FOLDER, `upload`);
+    await tester.saveUploadResultsToFile();
 
   } catch (err) {
     console.log(`❌ Unexpected error while running a tester:`, err);
