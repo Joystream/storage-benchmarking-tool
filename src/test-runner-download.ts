@@ -2,11 +2,10 @@ import axios from 'axios';
 import * as numeral from 'numeral';
 import * as _ from 'lodash';
 import * as fs from 'fs';
-import * as path from 'path';
 import { promisify } from 'util';
 import { Writable } from 'stream';
 
-import { DownloadResultType, base64Hash, RANDOM_RANGES_FOLDER, DownloadTestScenario, RandomRange, resolveTestResultsFilePath, formatNumber, resolveRandomRangesFilePath } from './utils';
+import { DownloadResultType, base64Hash, DownloadTestScenario, RandomRange, resolveTestResultsFilePath, formatNumber, resolveRandomRangesFilePath } from './utils';
 import { Option } from '@polkadot/types/codec';
 import { ContentId, ContentMetadata } from '@joystream/types/lib/media';
 import { AccountId } from '@polkadot/types';

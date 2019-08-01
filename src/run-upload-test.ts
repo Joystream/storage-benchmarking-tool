@@ -9,7 +9,6 @@ export async function runUploadTest (test: UploadTestScenario) {
 
     const contentProviders = await tester.getStakedProviders();
 
-    // This file is taken from: https://testnet.joystream.org/acropolis/pioneer/#/media/play/5FRqaXTmXJsZRKxmvcRSrCGvYgua5rtirc9dybWC6ijxieF9
     const testFilePath = path.join(SAMPLE_FILES_FOLDER, test.props.contentFileName);
 
     // TODO pick up provider dynamically or via filterProviders or try all providers:
