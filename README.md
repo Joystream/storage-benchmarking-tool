@@ -1,6 +1,6 @@
 # Storage Benchmarking Tool for Joystream Network
 
-Benchmarking tool now can do this:
+## Features
 
 - Upload a file to the primary liaison.
 - Download a full file from any storage provider.
