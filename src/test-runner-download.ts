@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { promisify } from 'util';
 import { Writable } from 'stream';
 
-import { DownloadResultType, base64Hash, DownloadTestScenario, RandomRange, resolveTestResultsFilePath, formatNumber, resolveRandomRangesFilePath } from './utils';
+import { DownloadResultType, base64Hash, DownloadTestScenario, RandomRange, resolveTestResultsFilePath, formatNumber, resolveRandomRangesFilePath, getRandomRangesFromCsvFile } from './utils';
 import { Option } from '@polkadot/types/codec';
 import { ContentId, ContentMetadata } from '@joystream/types/lib/media';
 import { AccountId } from '@polkadot/types';
@@ -23,26 +23,52 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
     return await this.api.query.actors.actorAccountIds() as unknown as AccountId[];
   }
 
+  protected findContentMetadata = async (contentId: ContentId): Promise<ContentMetadata> => {
+    const metadataOpt = await this.api.query.dataDirectory
+      .metadataByContentId(contentId) as Option<ContentMetadata>;
+    return metadataOpt.unwrapOr(undefined);
+  }
+
+  protected getContentName = async (contentId: ContentId): Promise<string> => {
+    const metadata = await this.findContentMetadata(contentId)
+    return metadata ? metadata.parseJson().name : undefined;
+  }
+
   // tslint:disable-next-line:max-func-body-length
-  public downloadContent = async (storageProviderId: AccountId, contentId: ContentId, randomRanges: RandomRange[] = []) => {
+  public downloadContent = async (storageProviderId: AccountId, contentId: ContentId) => {
     
-    const { generateRandomRanges } = (this.scenario as DownloadTestScenario).props;
+    const { generateRandomRanges, useRandomRanges, maxRandomRanges: randomRangesCount } = this.scenario.props;
+
     const cid = contentId.encode();
     const assetUrl = await this.resolveAssetEndpoint(storageProviderId, contentId);
-    const metadataOpt = await this.api.query.dataDirectory.metadataByContentId(contentId) as Option<ContentMetadata>;
+
+    const headers: any = {}
+
+    let randomRanges: RandomRange[]
+    let range: RandomRange
+    let expectedHash: string
+    let expectedRangeSize: number
+    let totalRangesSize: number
+    let currentRangeNumber: number
+
+    let randomRangesStr = ''
+    let matchedRanges = 0
+    let downloadedRange: Buffer
+
+    if (useRandomRanges) {
+      randomRanges = await getRandomRangesFromCsvFile(cid, randomRangesCount)
+      totalRangesSize = randomRanges.reduce((acc, range) => {
+        return acc + range.endIdx - range.startIdx
+      }, 0)
+    }
 
     const dataObject = await this.findDataObject(contentId)
     if (!dataObject) {
       console.log(`❌ Data object was not found by content id: ${cid}`);
       return;
     }
-
-    const metadata: ContentMetadata = metadataOpt.unwrapOr(undefined);
-    if (!metadata) {
-      console.log(`❌ Content metadata was not found by content id: ${cid}`);
-      return;
-    }
-    const metaJson = metadata.parseJson();
+    
+    const contentName = await this.getContentName(contentId)
 
     const contentFromUrlStr = `content from URL ${assetUrl}`;
     if (generateRandomRanges) {
@@ -51,20 +77,23 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
       console.log(`Downloading ${contentFromUrlStr}`)
     }
 
-    const expectedSize = dataObject.size_in_bytes.toNumber();
-    const consoleBar = newProgressBar('download')
+    const fileSize = dataObject.size_in_bytes.toNumber()
+    const expectedSize = randomRanges ? totalRangesSize : fileSize
 
+    const progressKind = useRandomRanges ? `range-download` : `full-download`
+    const consoleBar = newProgressBar(progressKind)
     const startTime = Date.now();
 
     const result: DownloadResultType = {
-      contentId: contentId.encode(),
-      contentName: metaJson.name,
+      contentId: cid,
+      contentName,
       storageProviderId: storageProviderId.toString(),
       assetUrl,
       startTime,
-      endTime: startTime, // this is a temporary until the test is finished or interrapted
-      fileSize: expectedSize,
+      endTime: startTime, // this is temporary until the test is finished or interrupted
+      fileSize,
       downloadedSize: 0,
+      randomRanges,
       error: undefined
     };
     this.testResults.push(result);
@@ -77,47 +106,25 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
       };
     }
 
-    const headers: any = {}
-    // console.log({ randomRanges })
+    const buildDownloadRequest = async () => {
+      // console.log({ headers })
+      const response = await axios.get(assetUrl, {
+        responseType: 'stream',
+        headers,
+      }).catch(err => {
+        const passed = passedMillis().asString;
+        throw new Error(`Failed to request ${contentFromUrlStr} after ${passed} millis. Error: ${err.toString()}`);
+      });
+  
+      if (!response) {
+        throw new Error(`Received an empty response from assent endpoint`)
+      }
 
-
-    let expectedHash: string
-    let expectedRangeSize: number
-
-    const useRandomRanges = randomRanges && randomRanges.length > 0
-    if (useRandomRanges) {
-      const range = randomRanges[0] // TODO get in a loop for every passed range
-      expectedRangeSize = range.endIdx - range.startIdx
-      expectedHash = range.base64Hash
-      console.log(`Requested range:`, range)
-      headers.Range = `bytes=${range.startIdx}-${range.endIdx-1}`
-    }
-    
-    consoleBar.start(expectedSize, 0, { speed: "N/A" })
-    
-    const response = await axios.get(assetUrl, {
-      responseType: 'stream',
-      headers,
-      // headers: { Range: `bytes=0-4` } // Just for debug.
-    }).catch(err => {
-      const passed = passedMillis().asString;
-      console.log(`❌ Failed to request ${contentFromUrlStr} after ${passed} millis`, err);
-    });
-
-    if (!response) {
-      const error = `Received an empty response from assent endpoint`;
-      result.endTime = Date.now();
-      result.error = error;
-      console.log(`❌ ${error}`);
-      return;
+      return response
     }
 
     let consumedSinceLastUpdate = 0;
     let consumedBytes = 0;
-
-    let randomRangesStr = ''
-
-    let downloadedRange = Buffer.from([]) // TODO it should be Buffer
 
     const calcSpeedInMbPerSec = () => {
       const mbConsumed = consumedBytes / updateEveryXBytes;
@@ -127,14 +134,17 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
 
     const updateProgressBar = () => {
       const speed = numeral(calcSpeedInMbPerSec()).format('0.00');
-      consoleBar.update(consumedBytes, { speed });
+      const progressPayload: any = { speed }
+      if (useRandomRanges) {
+        progressPayload.range = currentRangeNumber
+      }
+      consoleBar.update(consumedBytes, progressPayload);
     }
 
-    const consumeContent = new Promise((resolve, _reject) => {
+    const consumeContent = async () => new Promise((resolve, _reject) => {
       try {
         const stream = new Writable({
           write (chunk: any, _encoding: string, callback: (error?: Error | null) => void) {
-
             // console.log(`==> Download chunk of size`, chunk.length, `bytes:`, chunk)
 
             const chunkSize = chunk && chunk.length ? chunk.length : 0;
@@ -157,18 +167,20 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
               // console.log(`>> ${chunksProcessed + 1}) Hash b64 [${globalStart}-${globalEnd}; size: ${end - start}]: ${hash}`)
             }
 
-            
             // TODO print received range:
             if (useRandomRanges) {
               downloadedRange = Buffer.concat([downloadedRange, chunk])
               if (downloadedRange.length >= expectedRangeSize) {
                 const actualHash = base64Hash(downloadedRange)
-                console.log(`Expected base64 hash: ${expectedHash}`)
-                console.log(`Actual base64 hash:   ${actualHash}`)
+                // console.log(`Expected base64 hash: ${expectedHash}`)
+                // console.log(`Actual base64 hash:   ${actualHash}`)
+                if (actualHash === expectedHash) {
+                  matchedRanges++
+                } else {
+                  throw new Error(`Range hashes don't match: ${JSON.stringify(range)}`)
+                }
               }
             }
-            
-
 
             consumedBytes += chunkSize;
             consumedSinceLastUpdate += chunkSize;
@@ -179,24 +191,48 @@ export class DownloadTester extends AbstractTester<DownloadTestScenario, Downloa
             callback();
           }
         });
+
         stream.on('finish', () => {
           updateProgressBar();
           resolve();
         })
-        response.data.pipe(stream);
+
+        buildDownloadRequest().then(response =>
+          response.data.pipe(stream)
+        )
       } catch (err) {
         const passed = passedMillis().asString;
         result.endTime = Date.now();
         result.downloadedSize = consumedBytes;
-        result.error = `Failed to download a full content due to an error: ${err}`;
+        result.error = `Failed to download a content due to an error: ${err}`;
         
         consoleBar.stop();
-        console.log(`❌ Failed to consume a full content. Consumed ${formatNumber(consumedBytes)} bytes. Passed ${passed} millis.`, err);
+        console.log(`❌ Failed to download a content. Consumed ${formatNumber(consumedBytes)} bytes. Passed ${passed} millis.`, err);
         resolve();
       }
     });
     
-    await consumeContent;
+    const progressPayload: any = { speed: "N/A" }
+    if (useRandomRanges) {
+      progressPayload.range = 1
+      progressPayload.rangesCount = randomRanges.length
+    }
+    consoleBar.start(expectedSize, 0, progressPayload)
+
+    if (useRandomRanges) {
+      for (let i = 0; i < randomRanges.length; i++) {
+        range = randomRanges[i]
+        currentRangeNumber = i + 1
+        expectedRangeSize = range.endIdx - range.startIdx
+        expectedHash = range.base64Hash
+        downloadedRange = Buffer.from([])
+        headers.Range = `bytes=${range.startIdx}-${range.endIdx-1}`
+        // console.log(`Using a random range #${i+1}/${randomRanges.length}:`, range)
+        await consumeContent()
+      }
+    } else {
+      await consumeContent()
+    }
     
     const passed = passedMillis().asString;
     result.endTime = Date.now();

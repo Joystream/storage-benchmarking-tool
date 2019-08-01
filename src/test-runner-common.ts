@@ -136,7 +136,7 @@ export abstract class AbstractTester<T extends TestScenario<any>, R extends Test
     // TODO cast to type: 
     const serviceInfo = JSON.parse(serviceInfoJson.data.serialized)
 
-    console.log({ serviceInfo });
+    // console.log({ serviceInfo });
     
     return serviceInfo;
   }

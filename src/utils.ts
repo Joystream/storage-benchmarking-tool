@@ -53,6 +53,8 @@ export type TestScenarioProps = {
 export type DownloadTestScenarioProps = TestScenarioProps & {
   contentIds?: string[],
   generateRandomRanges?: boolean,
+  useRandomRanges?: boolean, // Should this test use random ranges?
+  maxRandomRanges?: number, // How many random ranges to use for downoload?
   // target: ...
   // personae: ...
   maxDownloadTimePerByte?: number
@@ -77,6 +79,7 @@ export type TestResultType = {
 export type DownloadResultType = TestResultType & {
   contentName: string,
   downloadedSize: number,
+  randomRanges?: RandomRange[]
 }
 
 export type UploadResultType = TestResultType & {

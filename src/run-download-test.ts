@@ -29,12 +29,8 @@ export async function runDownloadTest (test: DownloadTestScenario) {
         const provider = contentProviders[j];
         
         console.log(`\nDownloading content #${i+1}/${contentIds.length} from provider #${j+1}/${contentProviders.length}`)
-        
-        // TODO use random ranges only if it was requested by a test runner:
-        // const randomRanges = await getRandomRangesFromCsvFile(cid, 5)
-        const randomRanges = []
 
-        await tester.downloadContent(provider, cid, randomRanges);
+        await tester.downloadContent(provider, cid);
       }
     }
 
