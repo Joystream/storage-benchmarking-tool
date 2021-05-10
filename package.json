@@ -47,7 +47,7 @@
     "frappe-charts": "^1.2.3",
     "ipfs-http-client": "^32.0.1",
     "ipfs-only-hash": "^1.0.2",
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.21",
     "numeral": "^2.0.6",
     "react": "^16.8.6",
     "recharts": "^1.6.2",
